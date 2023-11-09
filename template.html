@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+        <style>
+            .visible { 
+                border: 3px red solid;
+            }
+        </style>
+    </head>
+    <body>
+        <div>
+            <div style="display: flex; width: 100%; height: 100%;">
+                <div style="width: 980px; overflow-y: scroll; max-height: 700px;">
+                    <ul class="screenshots" style="list-style-type: none; padding: 0px;">
+                        {{- range .Screenshots}}
+                        <li data-timestamp="{{.Timestamp}}" class="screenshot"><img src="{{.Path}}"><div>{{.Timestamp}}</div></li>
+                        {{- end}}
+                    </ul>
+                </div>
+                <div style="flex: 1; overflow-x: scroll; overflow-y: scroll; max-height: 100vh;">
+                    <ul style="list-style-type: none; padding: 0px;">
+                        {{- range .LogLines}}
+                        <li data-second="{{.Second}}">{{.Entry}}</li>
+                        {{- end}}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <script>
+            // define an observer instance
+            var observer = new IntersectionObserver(onIntersection, {
+                root: null,   // default is the viewport
+                threshold: .6 // percentage of target's visible area. Triggers "onIntersection"
+            })
+
+            // callback is called on intersection change
+            function onIntersection(entries, opts){
+                entries.forEach(entry => { 
+                        entry.target.classList.toggle('visible', entry.isIntersecting)
+                        const second = Math.floor(entry.target.getAttribute('data-timestamp') / 1000);
+                        const el = document.querySelector(`li[data-second="${second}"]`)
+                        if (el) {
+                            el.scrollIntoView();
+                        } 
+                    }
+                )
+            }
+
+            // Use the observer to observe an element
+            observer.observe( document.querySelector('.screenshots') )
+
+            document.querySelectorAll('.screenshot').forEach((el) => {
+                observer.observe(el);
+            });
+        </script>
+    </body>
+</html>
