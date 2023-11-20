@@ -6,6 +6,8 @@ import "encoding/json"
 import "flag"
 import "fmt"
 import "html/template"
+import "image"
+import _ "image/jpeg"
 import "io"
 import "log"
 import "net/http"
@@ -21,7 +23,9 @@ type Config struct {
 	webDashboardUrl string
 	apiUsername string
 	apiToken string
+	companyId string
 	sessionId string
+	orientation string
 }
 
 func main() {
@@ -31,7 +35,9 @@ func main() {
 	var webDashboardUrl = flag.String("web-dashboard-url", "", "")
 	var apiUsername = flag.String("api-username", "", "")
 	var apiToken = flag.String("api-token", "", "")
+	var companyId = flag.String("company-id", "", "")
 	var sessionId = flag.String("session-id", "", "")
+	var orientation = flag.String("orientation", "landscape", "")
 
 	flag.Parse()
 
@@ -39,16 +45,21 @@ func main() {
 		webDashboardUrl: *webDashboardUrl,
 		apiUsername: *apiUsername,
 		apiToken: *apiToken,
+		companyId: *companyId,
 		sessionId: *sessionId,
+		orientation: *orientation,
 	}
 
 	fmt.Println(*webDashboardUrl)
 	fmt.Println(*apiUsername)
 	fmt.Println(*apiToken)
+	fmt.Println(*companyId)
 	fmt.Println(*sessionId)
+	fmt.Println(*orientation)
 	fmt.Println(config)
 
 	firstMetricTimestamp := lookupSession(config)
+	fmt.Println(firstMetricTimestamp)
 	zipFile := downloadSession(config)
 	outDir := unzipSession(config.sessionId, zipFile)
 	fmt.Println(outDir)
@@ -56,11 +67,11 @@ func main() {
 	fmt.Println(screenshots)
 	logLines := getLogLines(outDir)
 
-	generateHtml(firstMetricTimestamp, screenshots, logLines)
+	generateHtml(firstMetricTimestamp, screenshots, logLines, config.orientation)
 }
 
 type SessionResponse struct {
-	MinAbsTSCharts uint64 `json "minAbsTSCharts"`
+	MinAbsTSCharts uint64 `json:"minAbsTSCharts"`
 }
 
 func lookupSession(config Config) (uint64) {
@@ -68,7 +79,7 @@ func lookupSession(config Config) (uint64) {
 		Transport: &http.Transport{},
 	}
 
-	url := fmt.Sprintf("%s/v1/sessions/%s", config.webDashboardUrl, config.sessionId)
+	url := fmt.Sprintf("%s/v1/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, config.companyId)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -82,6 +93,10 @@ func lookupSession(config Config) (uint64) {
 		log.Fatalln(err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		log.Fatalln("Session not found")
+	}
 
 	fmt.Println(resp)
 
@@ -97,7 +112,7 @@ func downloadSession(config Config) (string) {
 		Transport: &http.Transport{},
 	}
 
-	url := fmt.Sprintf("%s/v1/sessions/export/sessions/%s", config.webDashboardUrl, config.sessionId)
+	url := fmt.Sprintf("%s/v1/sessions/export/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, config.companyId)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -113,6 +128,10 @@ func downloadSession(config Config) (string) {
 	defer resp.Body.Close()
 
 	fmt.Println(resp)
+
+	if resp.StatusCode == 404 {
+		log.Fatalln("Session not found")
+	}
 	
 	filename := fmt.Sprintf("%s.zip", config.sessionId)
 
@@ -158,17 +177,44 @@ func getLogLines(sessionDir string) ([]string) {
 
 	fmt.Print(files)
 
+	if len(files) == 0 {
+		files, err = filepath.Glob(fmt.Sprintf("%s/**/**/android_app_logcat.txt", sessionDir))
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
+
+	fmt.Println(files)
+
+	if len(files) == 0 {
+		panic("Log file not found")
+	}
+
 	path := files[0]
 
 	file, err := os.Open(path)
     if err != nil {
         log.Fatalln(err)
     }
-    defer file.Close()
+	defer file.Close()
+
+	n := 0
+	from := 0
+	to := 500
 
     var lines []string
     scanner := bufio.NewScanner(file)
     for scanner.Scan() {
+		n++
+
+		if n < from {
+			continue
+		}
+
+		if n > to {
+			break
+		}
+
         lines = append(lines, scanner.Text())
 	}
 
@@ -187,14 +233,16 @@ func listScreenshots(sessionDir string) ([]string) {
 type Screenshot struct {
 	Path string
 	Timestamp uint64
+	PrettyTimestamp uint64
 }
 
 type LogEntry struct {
 	Second uint64
 	Entry string
+	First bool
 }
 
-func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string) {
+func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string) {
 	// Parse the HTML template from a file.
 	tmpl, err := template.ParseFiles("template.html")
 	if err != nil {
@@ -212,7 +260,16 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 
 	r := regexp.MustCompile(`/([0-9]+)\.jpg$`)
 
+	var screenshotWidth *int
+	var screenshotHeight *int
+
 	for _, screenshot := range screenshotPaths {
+		if screenshotWidth == nil || screenshotHeight == nil {
+			returnedScreenshotWidth, returnedScreenshotHeight := getImageDimensions(screenshot)
+			screenshotWidth = &returnedScreenshotWidth
+			screenshotHeight = &returnedScreenshotHeight
+		}
+
 		matches := r.FindStringSubmatch(screenshot)
 		timestampStr := matches[1]
 
@@ -224,17 +281,50 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 		screenshots = append(screenshots, &Screenshot{
 			Path: screenshot,
 			Timestamp: timestamp - firstMetricTimestamp,
+			PrettyTimestamp: (timestamp - firstMetricTimestamp),
 		})
 	}
 
 	logs := make([]*LogEntry, 0)
 
-	r2 := regexp.MustCompile(`^([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
+	r2 := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
+	r3 := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2} `)
+
+	var firstHours *uint64
+	var firstMinutes *uint64
+	var firstSeconds *uint64
+	var prev uint64
+	var first bool
 
 	for _, log := range logLines {
 		matches := r2.FindStringSubmatch(log)
 		if len(matches) == 0 {
 			continue
+		}
+
+		dateMatches := r3.MatchString(log)
+
+		if dateMatches == true && (firstHours == nil || firstMinutes == nil) {
+			parsed, err := strconv.ParseUint(matches[1], 10, 64)
+			if err != nil {
+				panic(err)
+			}
+
+			firstHours = &parsed
+
+			minutesParsed, err := strconv.ParseUint(matches[2], 10, 64)
+			if err != nil {
+				panic(err)
+			}
+
+			firstMinutes = &minutesParsed
+
+			secondsParsed, err := strconv.ParseUint(matches[3], 10, 64)
+			if err != nil {
+				panic(err)
+			}
+
+			firstSeconds = &secondsParsed
 		}
 
 		hours, err := strconv.ParseUint(matches[1], 10, 64)
@@ -252,21 +342,53 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 			panic(err)
 		}
 
+		if firstHours != nil {
+			hours = hours - *firstHours
+		}
+
+		if firstMinutes != nil {
+			minutes = minutes - *firstMinutes
+		}
+
+		if firstSeconds != nil {
+			seconds = seconds - *firstSeconds
+		}
+
 		total := seconds + (minutes * 60) + (hours * 60 * 60)
+
+		if prev != total {
+			first = true
+			prev = total
+		} else {
+			first = false
+		}
 
 		logs = append(logs, &LogEntry{
 			Entry: log,
 			Second: total,
+			First: first,
 		})	
+	}
+
+	if *screenshotWidth > *screenshotHeight {
+		orientation = "landscape"
+	} else {
+		orientation = "portrait"
 	}
 
 	// Execute the template and write the output to the file.
 	data := struct {
 		Screenshots []*Screenshot
 		LogLines []*LogEntry
+		Orientation string
+		ScreenshotWidth int
+		ScreenshotHeight int
 	}{
 		Screenshots: screenshots,
 		LogLines: logs,
+		Orientation: orientation,
+		ScreenshotWidth: *screenshotWidth,
+		ScreenshotHeight: *screenshotHeight,
 	}
 
 	err = tmpl.Execute(output, data)
@@ -337,4 +459,19 @@ func unzip(src, dest string) error {
     }
 
     return nil
+}
+
+func getImageDimensions(imagePath string) (int, int) {
+	file, err := os.Open(imagePath)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer file.Close()
+
+	image, _, err := image.DecodeConfig(file)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return image.Width, image.Height
 }

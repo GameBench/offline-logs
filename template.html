@@ -6,54 +6,78 @@
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
         <style>
             .visible { 
-                border: 3px red solid;
+                /* border: 1px red solid; */
+            }
+
+            .container-landscape {
+                width: calc({{if (ge .ScreenshotWidth 980)}}980px{{else}}{{.ScreenshotWidth}}px{{end}} + 20px);
+                overflow-y: scroll;
+                max-height: calc({{if (ge .ScreenshotHeight 700)}}700px{{else}}{{.ScreenshotHeight}}px{{end}} + 20px);
+            }
+
+            .container-portrait {
+                width: calc({{if (ge .ScreenshotWidth 550)}}550px{{else}}{{.ScreenshotWidth}}px{{end}} + 20px);
+                overflow-y: scroll;
+                max-height: calc({{if (ge .ScreenshotHeight 1124)}}1124px{{else}}{{.ScreenshotHeight}}px{{end}} + 20px);
+            }
+
+            .image-portrait {
+                max-height: {{if (ge .ScreenshotHeight 1124)}}1124px{{else}}{{.ScreenshotHeight}}px{{end}};
+                max-width: {{if (ge .ScreenshotWidth 532)}}532px{{else}}{{.ScreenshotWidth}}px{{end}};
+            }
+
+            .image-landscape {
+
             }
         </style>
     </head>
     <body>
         <div>
             <div style="display: flex; width: 100%; height: 100%;">
-                <div style="width: 980px; overflow-y: scroll; max-height: 700px;">
+                <div class="container-{{.Orientation}}">
                     <ul class="screenshots" style="list-style-type: none; padding: 0px;">
                         {{- range .Screenshots}}
-                        <li data-timestamp="{{.Timestamp}}" class="screenshot"><img src="{{.Path}}"><div>{{.Timestamp}}</div></li>
+                        <li data-timestamp="{{.Timestamp}}" class="screenshot"><img class="image-{{$.Orientation}}" src="{{.Path}}"><div>{{.PrettyTimestamp}}</div></li>
                         {{- end}}
                     </ul>
                 </div>
                 <div style="flex: 1; overflow-x: scroll; overflow-y: scroll; max-height: 100vh;">
                     <ul style="list-style-type: none; padding: 0px;">
                         {{- range .LogLines}}
-                        <li data-second="{{.Second}}">{{.Entry}}</li>
+                        <li {{if .First}}data-second="{{.Second}}"{{end}}>{{.Entry}}</li>
                         {{- end}}
                     </ul>
                 </div>
             </div>
         </div>
         <script>
-            // define an observer instance
-            var observer = new IntersectionObserver(onIntersection, {
-                root: null,   // default is the viewport
-                threshold: .6 // percentage of target's visible area. Triggers "onIntersection"
-            })
+            document.addEventListener("DOMContentLoaded", () => {
+                // define an observer instance
+                var observer = new IntersectionObserver(onIntersection, {
+                    root: null,   // default is the viewport
+                    threshold: .6 // percentage of target's visible area. Triggers "onIntersection"
+                })
 
-            // callback is called on intersection change
-            function onIntersection(entries, opts){
-                entries.forEach(entry => { 
-                        entry.target.classList.toggle('visible', entry.isIntersecting)
-                        const second = Math.floor(entry.target.getAttribute('data-timestamp') / 1000);
-                        const el = document.querySelector(`li[data-second="${second}"]`)
-                        if (el) {
-                            el.scrollIntoView();
-                        } 
-                    }
-                )
-            }
+                // callback is called on intersection change
+                function onIntersection(entries, opts){
+                    entries.forEach(entry => { 
+                            entry.target.classList.toggle('visible', entry.isIntersecting)
+                            const second = Math.floor(entry.target.getAttribute('data-timestamp') / 1000);
+                            const el = document.querySelector(`li[data-second="${second}"]`)
+                            if (el && entry.isIntersecting) {
+                                console.log(second);
+                                el.scrollIntoView();
+                            } 
+                        }
+                    )
+                }
 
-            // Use the observer to observe an element
-            observer.observe( document.querySelector('.screenshots') )
+                // Use the observer to observe an element
+                observer.observe( document.querySelector('.screenshots') )
 
-            document.querySelectorAll('.screenshot').forEach((el) => {
-                observer.observe(el);
+                document.querySelectorAll('.screenshot').forEach((el) => {
+                    observer.observe(el);
+                });
             });
         </script>
     </body>
