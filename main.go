@@ -72,25 +72,15 @@ func main() {
 		orientation: *orientation,
 	}
 
-	// fmt.Println(*webDashboardUrl)
-	// fmt.Println(*apiUsername)
-	// fmt.Println(*apiToken)
-	// fmt.Println(*companyId)
-	// fmt.Println(*sessionId)
-	// fmt.Println(*orientation)
-	// fmt.Println(config)
-
 	firstMetricTimestamp := lookupSession(config)
-	// fmt.Println(firstMetricTimestamp)
 	zipFile := downloadSession(config)
 	outDir = unzipSession(config.sessionId, zipFile)
 	err := os.Remove(zipFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// fmt.Println(outDir)
+
 	screenshots := listScreenshots(outDir)
-	// fmt.Println(screenshots)
 	logLines := getLogLines(0, 500)
 
 	outputPath := generateHtml(firstMetricTimestamp, screenshots, logLines, config.orientation, *port)
@@ -156,8 +146,6 @@ func lookupSession(config Config) (uint64) {
 		log.Fatalln("Session not found")
 	}
 
-	// fmt.Println(resp)
-
 	sessionResponse := &SessionResponse{}
 
 	json.NewDecoder(resp.Body).Decode(sessionResponse)
@@ -184,8 +172,6 @@ func downloadSession(config Config) (string) {
 		log.Fatalln(err)
 	}
 	defer resp.Body.Close()
-
-	// fmt.Println(resp)
 
 	if resp.StatusCode == 404 {
 		log.Fatalln("Session not found")
@@ -218,8 +204,6 @@ func unzipSession(sessionId string, zipFile string) (string) {
 		log.Fatalln(err)
 	}
 
-	// fmt.Println(files)
-
 	outDir := fmt.Sprintf("./sessions/%s", sessionId)
 
 	unzip(files[0], outDir)
@@ -233,16 +217,12 @@ func getLogLines(from int, to int) ([]string) {
 		log.Fatalln(err)
 	}
 
-	// fmt.Print(files)
-
 	if len(files) == 0 {
 		files, err = filepath.Glob(fmt.Sprintf("%s/**/**/android_app_logcat.txt", outDir))
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
-
-	// fmt.Println(files)
 
 	if len(files) == 0 {
 		panic("Log file not found")
