@@ -21,11 +21,11 @@ var version string
 
 type Config struct {
 	webDashboardUrl string
-	apiUsername string
-	apiToken string
-	companyId string
-	sessionId string
-	orientation string
+	apiUsername     string
+	apiToken        string
+	companyId       string
+	sessionId       string
+	orientation     string
 }
 
 var outDir string
@@ -65,11 +65,11 @@ func main() {
 
 	config := Config{
 		webDashboardUrl: *webDashboardUrl,
-		apiUsername: *apiUsername,
-		apiToken: *apiToken,
-		companyId: *companyId,
-		sessionId: *sessionId,
-		orientation: *orientation,
+		apiUsername:     *apiUsername,
+		apiToken:        *apiToken,
+		companyId:       *companyId,
+		sessionId:       *sessionId,
+		orientation:     *orientation,
 	}
 
 	firstMetricTimestamp := lookupSession(config)
@@ -122,7 +122,7 @@ type SessionResponse struct {
 	MinAbsTSCharts uint64 `json:"minAbsTSCharts"`
 }
 
-func lookupSession(config Config) (uint64) {
+func lookupSession(config Config) uint64 {
 	client := &http.Client{
 		Transport: &http.Transport{},
 	}
@@ -153,7 +153,7 @@ func lookupSession(config Config) (uint64) {
 	return sessionResponse.MinAbsTSCharts
 }
 
-func downloadSession(config Config) (string) {
+func downloadSession(config Config) string {
 	client := &http.Client{
 		Transport: &http.Transport{},
 	}
@@ -176,7 +176,7 @@ func downloadSession(config Config) (string) {
 	if resp.StatusCode == 404 {
 		log.Fatalln("Session not found")
 	}
-	
+
 	filename := fmt.Sprintf("%s.zip", config.sessionId)
 
 	zipFile, err := os.Create(filename)
@@ -191,7 +191,7 @@ func downloadSession(config Config) (string) {
 	return filename
 }
 
-func unzipSession(sessionId string, zipFile string) (string) {
+func unzipSession(sessionId string, zipFile string) string {
 	f, err := os.MkdirTemp("", "session-export")
 	if err != nil {
 		log.Fatalln(err)
@@ -211,7 +211,7 @@ func unzipSession(sessionId string, zipFile string) (string) {
 	return outDir
 }
 
-func getLogLines(from int, to int) ([]string) {
+func getLogLines(from int, to int) []string {
 	files, err := filepath.Glob(fmt.Sprintf("%s/**/**/logcat.txt", outDir))
 	if err != nil {
 		log.Fatalln(err)
@@ -231,16 +231,16 @@ func getLogLines(from int, to int) ([]string) {
 	path := files[0]
 
 	file, err := os.Open(path)
-    if err != nil {
-        log.Fatalln(err)
-    }
+	if err != nil {
+		log.Fatalln(err)
+	}
 	defer file.Close()
 
 	n := 0
 
-    var lines []string
-    scanner := bufio.NewScanner(file)
-    for scanner.Scan() {
+	var lines []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
 		n++
 
 		if n < from {
@@ -251,13 +251,13 @@ func getLogLines(from int, to int) ([]string) {
 			break
 		}
 
-        lines = append(lines, scanner.Text())
+		lines = append(lines, scanner.Text())
 	}
 
-    return lines
+	return lines
 }
 
-func listScreenshots(sessionDir string) ([]string) {
+func listScreenshots(sessionDir string) []string {
 	files, err := filepath.Glob(fmt.Sprintf("%s/**/**/fbsnapshots/*.jpg", sessionDir))
 	if err != nil {
 		log.Fatalln(err)
@@ -267,15 +267,15 @@ func listScreenshots(sessionDir string) ([]string) {
 }
 
 type Screenshot struct {
-	Path string
-	Timestamp uint64
+	Path            string
+	Timestamp       uint64
 	PrettyTimestamp uint64
 }
 
 type LogEntry struct {
 	Second uint64 `json:"second"`
-	Entry string `json:"entry"`
-	First bool `json:"first"`
+	Entry  string `json:"entry"`
+	First  bool   `json:"first"`
 }
 
 var firstHours *uint64
@@ -284,7 +284,7 @@ var firstSeconds *uint64
 var prev uint64
 var first bool
 
-func processLogLines(logLines []string)([]*LogEntry) {
+func processLogLines(logLines []string) []*LogEntry {
 	logs := make([]*LogEntry, 0)
 
 	r2 := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
@@ -358,16 +358,16 @@ func processLogLines(logLines []string)([]*LogEntry) {
 		}
 
 		logs = append(logs, &LogEntry{
-			Entry: log,
+			Entry:  log,
 			Second: total,
-			First: first,
-		})	
+			First:  first,
+		})
 	}
 
 	return logs
 }
 
-func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string, port string) (string) {
+func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string, port string) string {
 	// Parse the HTML template from a file.
 	tmpl, err := template.ParseFiles("template.html")
 	if err != nil {
@@ -404,8 +404,8 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 		}
 
 		screenshots = append(screenshots, &Screenshot{
-			Path: screenshot,
-			Timestamp: timestamp - firstMetricTimestamp,
+			Path:            screenshot,
+			Timestamp:       timestamp - firstMetricTimestamp,
 			PrettyTimestamp: (timestamp - firstMetricTimestamp),
 		})
 	}
@@ -420,24 +420,24 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 
 	// Execute the template and write the output to the file.
 	data := struct {
-		Screenshots []*Screenshot
-		LogLines []*LogEntry
-		Orientation string
-		ScreenshotWidth int
+		Screenshots      []*Screenshot
+		LogLines         []*LogEntry
+		Orientation      string
+		ScreenshotWidth  int
 		ScreenshotHeight int
-		Port string
+		Port             string
 	}{
-		Screenshots: screenshots,
-		LogLines: logs,
-		Orientation: orientation,
-		ScreenshotWidth: *screenshotWidth,
+		Screenshots:      screenshots,
+		LogLines:         logs,
+		Orientation:      orientation,
+		ScreenshotWidth:  *screenshotWidth,
 		ScreenshotHeight: *screenshotHeight,
-		Port: port,
+		Port:             port,
 	}
 
 	err = tmpl.Execute(output, data)
-    if err != nil {
-        panic(err)
+	if err != nil {
+		panic(err)
 	}
 
 	absPath, err := filepath.Abs("output.html")
@@ -449,67 +449,67 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 }
 
 func unzip(src, dest string) error {
-    r, err := zip.OpenReader(src)
-    if err != nil {
-        return err
-    }
-    defer func() {
-        if err := r.Close(); err != nil {
-            panic(err)
-        }
-    }()
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := r.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
-    os.MkdirAll(dest, 0755)
+	os.MkdirAll(dest, 0755)
 
-    // Closure to address file descriptors issue with all the deferred .Close() methods
-    extractAndWriteFile := func(f *zip.File) error {
-        rc, err := f.Open()
-        if err != nil {
-            return err
-        }
-        defer func() {
-            if err := rc.Close(); err != nil {
-                panic(err)
-            }
-        }()
+	// Closure to address file descriptors issue with all the deferred .Close() methods
+	extractAndWriteFile := func(f *zip.File) error {
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := rc.Close(); err != nil {
+				panic(err)
+			}
+		}()
 
-        path := filepath.Join(dest, f.Name)
+		path := filepath.Join(dest, f.Name)
 
-        // Check for ZipSlip (Directory traversal)
-        if !strings.HasPrefix(path, filepath.Clean(dest) + string(os.PathSeparator)) {
-            return fmt.Errorf("illegal file path: %s", path)
-        }
+		// Check for ZipSlip (Directory traversal)
+		if !strings.HasPrefix(path, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", path)
+		}
 
-        if f.FileInfo().IsDir() {
-            os.MkdirAll(path, f.Mode())
-        } else {
-            os.MkdirAll(filepath.Dir(path), f.Mode())
-            f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-            if err != nil {
-                return err
-            }
-            defer func() {
-                if err := f.Close(); err != nil {
-                    panic(err)
-                }
-            }()
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(path, f.Mode())
+		} else {
+			os.MkdirAll(filepath.Dir(path), f.Mode())
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err := f.Close(); err != nil {
+					panic(err)
+				}
+			}()
 
-            _, err = io.Copy(f, rc)
-            if err != nil {
-                return err
-            }
-        }
-        return nil
-    }
+			_, err = io.Copy(f, rc)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
-    for _, f := range r.File {
-        err := extractAndWriteFile(f)
-        if err != nil {
-            return err
-        }
-    }
+	for _, f := range r.File {
+		err := extractAndWriteFile(f)
+		if err != nil {
+			return err
+		}
+	}
 
-    return nil
+	return nil
 }
 
 func getImageDimensions(imagePath string) (int, int) {
