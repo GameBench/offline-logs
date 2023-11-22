@@ -28,9 +28,10 @@ type Config struct {
 	orientation string
 }
 
+var outDir string
+
 func main() {
-	fmt.Println("Hello, world.")
-	fmt.Println(version)
+	fmt.Printf("Version: %s\n", version)
 
 	var webDashboardUrl = flag.String("web-dashboard-url", "", "")
 	var apiUsername = flag.String("api-username", "", "")
@@ -38,8 +39,29 @@ func main() {
 	var companyId = flag.String("company-id", "", "")
 	var sessionId = flag.String("session-id", "", "")
 	var orientation = flag.String("orientation", "landscape", "")
+	var port = flag.String("port", "3333", "")
 
 	flag.Parse()
+
+	if *webDashboardUrl == "" {
+		log.Fatalln("Web Dashboard URL must be specified")
+	}
+
+	if *apiUsername == "" {
+		log.Fatalln("API username must be specified")
+	}
+
+	if *apiToken == "" {
+		log.Fatalln("API token must be specified")
+	}
+
+	if *companyId == "" {
+		log.Fatalln("Company ID must be specified")
+	}
+
+	if *sessionId == "" {
+		log.Fatalln("Session ID must be specified")
+	}
 
 	config := Config{
 		webDashboardUrl: *webDashboardUrl,
@@ -50,24 +72,60 @@ func main() {
 		orientation: *orientation,
 	}
 
-	fmt.Println(*webDashboardUrl)
-	fmt.Println(*apiUsername)
-	fmt.Println(*apiToken)
-	fmt.Println(*companyId)
-	fmt.Println(*sessionId)
-	fmt.Println(*orientation)
-	fmt.Println(config)
+	// fmt.Println(*webDashboardUrl)
+	// fmt.Println(*apiUsername)
+	// fmt.Println(*apiToken)
+	// fmt.Println(*companyId)
+	// fmt.Println(*sessionId)
+	// fmt.Println(*orientation)
+	// fmt.Println(config)
 
 	firstMetricTimestamp := lookupSession(config)
-	fmt.Println(firstMetricTimestamp)
+	// fmt.Println(firstMetricTimestamp)
 	zipFile := downloadSession(config)
-	outDir := unzipSession(config.sessionId, zipFile)
-	fmt.Println(outDir)
+	outDir = unzipSession(config.sessionId, zipFile)
+	err := os.Remove(zipFile)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	// fmt.Println(outDir)
 	screenshots := listScreenshots(outDir)
-	fmt.Println(screenshots)
-	logLines := getLogLines(outDir)
+	// fmt.Println(screenshots)
+	logLines := getLogLines(0, 500)
 
-	generateHtml(firstMetricTimestamp, screenshots, logLines, config.orientation)
+	outputPath := generateHtml(firstMetricTimestamp, screenshots, logLines, config.orientation, *port)
+
+	fmt.Printf("Please open %s in your browser\n", outputPath)
+
+	http.HandleFunc("/", getRoot)
+	http.HandleFunc("/logs", getLogs)
+
+	err = http.ListenAndServe(fmt.Sprintf("127.0.0.1:%s", *port), nil)
+	log.Fatalln(err)
+}
+
+func getRoot(w http.ResponseWriter, r *http.Request) {
+	io.WriteString(w, "Pong\n")
+}
+
+func getLogs(w http.ResponseWriter, r *http.Request) {
+	from, err := strconv.Atoi(r.URL.Query().Get("from"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	to, err := strconv.Atoi(r.URL.Query().Get("to"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	logLines := getLogLines(from, to)
+	logs := processLogLines(logLines)
+
+	encoded, _ := json.Marshal(logs)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	io.WriteString(w, string(encoded))
 }
 
 type SessionResponse struct {
@@ -98,7 +156,7 @@ func lookupSession(config Config) (uint64) {
 		log.Fatalln("Session not found")
 	}
 
-	fmt.Println(resp)
+	// fmt.Println(resp)
 
 	sessionResponse := &SessionResponse{}
 
@@ -127,7 +185,7 @@ func downloadSession(config Config) (string) {
 	}
 	defer resp.Body.Close()
 
-	fmt.Println(resp)
+	// fmt.Println(resp)
 
 	if resp.StatusCode == 404 {
 		log.Fatalln("Session not found")
@@ -160,7 +218,7 @@ func unzipSession(sessionId string, zipFile string) (string) {
 		log.Fatalln(err)
 	}
 
-	fmt.Println(files)
+	// fmt.Println(files)
 
 	outDir := fmt.Sprintf("./sessions/%s", sessionId)
 
@@ -169,22 +227,22 @@ func unzipSession(sessionId string, zipFile string) (string) {
 	return outDir
 }
 
-func getLogLines(sessionDir string) ([]string) {
-	files, err := filepath.Glob(fmt.Sprintf("%s/**/**/logcat.txt", sessionDir))
+func getLogLines(from int, to int) ([]string) {
+	files, err := filepath.Glob(fmt.Sprintf("%s/**/**/logcat.txt", outDir))
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	fmt.Print(files)
+	// fmt.Print(files)
 
 	if len(files) == 0 {
-		files, err = filepath.Glob(fmt.Sprintf("%s/**/**/android_app_logcat.txt", sessionDir))
+		files, err = filepath.Glob(fmt.Sprintf("%s/**/**/android_app_logcat.txt", outDir))
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
 
-	fmt.Println(files)
+	// fmt.Println(files)
 
 	if len(files) == 0 {
 		panic("Log file not found")
@@ -199,8 +257,6 @@ func getLogLines(sessionDir string) ([]string) {
 	defer file.Close()
 
 	n := 0
-	from := 0
-	to := 500
 
     var lines []string
     scanner := bufio.NewScanner(file)
@@ -237,64 +293,22 @@ type Screenshot struct {
 }
 
 type LogEntry struct {
-	Second uint64
-	Entry string
-	First bool
+	Second uint64 `json:"second"`
+	Entry string `json:"entry"`
+	First bool `json:"first"`
 }
 
-func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string) {
-	// Parse the HTML template from a file.
-	tmpl, err := template.ParseFiles("template.html")
-	if err != nil {
-		panic(err)
-	}
+var firstHours *uint64
+var firstMinutes *uint64
+var firstSeconds *uint64
+var prev uint64
+var first bool
 
-	// Open a new file for writing.
-	output, err := os.Create("output.html")
-	if err != nil {
-		panic(err)
-	}
-	defer output.Close()
-
-	screenshots := make([]*Screenshot, 0)
-
-	r := regexp.MustCompile(`/([0-9]+)\.jpg$`)
-
-	var screenshotWidth *int
-	var screenshotHeight *int
-
-	for _, screenshot := range screenshotPaths {
-		if screenshotWidth == nil || screenshotHeight == nil {
-			returnedScreenshotWidth, returnedScreenshotHeight := getImageDimensions(screenshot)
-			screenshotWidth = &returnedScreenshotWidth
-			screenshotHeight = &returnedScreenshotHeight
-		}
-
-		matches := r.FindStringSubmatch(screenshot)
-		timestampStr := matches[1]
-
-		timestamp, err := strconv.ParseUint(timestampStr, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-
-		screenshots = append(screenshots, &Screenshot{
-			Path: screenshot,
-			Timestamp: timestamp - firstMetricTimestamp,
-			PrettyTimestamp: (timestamp - firstMetricTimestamp),
-		})
-	}
-
+func processLogLines(logLines []string)([]*LogEntry) {
 	logs := make([]*LogEntry, 0)
 
 	r2 := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
 	r3 := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2} `)
-
-	var firstHours *uint64
-	var firstMinutes *uint64
-	var firstSeconds *uint64
-	var prev uint64
-	var first bool
 
 	for _, log := range logLines {
 		matches := r2.FindStringSubmatch(log)
@@ -370,6 +384,54 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 		})	
 	}
 
+	return logs
+}
+
+func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string, port string) (string) {
+	// Parse the HTML template from a file.
+	tmpl, err := template.ParseFiles("template.html")
+	if err != nil {
+		panic(err)
+	}
+
+	// Open a new file for writing.
+	output, err := os.Create("output.html")
+	if err != nil {
+		panic(err)
+	}
+	defer output.Close()
+
+	screenshots := make([]*Screenshot, 0)
+
+	r := regexp.MustCompile(`/([0-9]+)\.jpg$`)
+
+	var screenshotWidth *int
+	var screenshotHeight *int
+
+	for _, screenshot := range screenshotPaths {
+		if screenshotWidth == nil || screenshotHeight == nil {
+			returnedScreenshotWidth, returnedScreenshotHeight := getImageDimensions(screenshot)
+			screenshotWidth = &returnedScreenshotWidth
+			screenshotHeight = &returnedScreenshotHeight
+		}
+
+		matches := r.FindStringSubmatch(screenshot)
+		timestampStr := matches[1]
+
+		timestamp, err := strconv.ParseUint(timestampStr, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+
+		screenshots = append(screenshots, &Screenshot{
+			Path: screenshot,
+			Timestamp: timestamp - firstMetricTimestamp,
+			PrettyTimestamp: (timestamp - firstMetricTimestamp),
+		})
+	}
+
+	logs := processLogLines(logLines)
+
 	if *screenshotWidth > *screenshotHeight {
 		orientation = "landscape"
 	} else {
@@ -383,18 +445,27 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 		Orientation string
 		ScreenshotWidth int
 		ScreenshotHeight int
+		Port string
 	}{
 		Screenshots: screenshots,
 		LogLines: logs,
 		Orientation: orientation,
 		ScreenshotWidth: *screenshotWidth,
 		ScreenshotHeight: *screenshotHeight,
+		Port: port,
 	}
 
 	err = tmpl.Execute(output, data)
     if err != nil {
         panic(err)
-    }
+	}
+
+	absPath, err := filepath.Abs("output.html")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return absPath
 }
 
 func unzip(src, dest string) error {

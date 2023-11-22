@@ -42,11 +42,12 @@
                     </ul>
                 </div>
                 <div style="flex: 1; overflow-x: scroll; overflow-y: scroll; max-height: 100vh;">
-                    <ul style="list-style-type: none; padding: 0px;">
+                    <ul class="logs" style="list-style-type: none; padding: 0px;">
                         {{- range .LogLines}}
                         <li {{if .First}}data-second="{{.Second}}"{{end}}>{{.Entry}}</li>
                         {{- end}}
                     </ul>
+                    <div class="more">loading</div>
                 </div>
             </div>
         </div>
@@ -61,23 +62,62 @@
                 // callback is called on intersection change
                 function onIntersection(entries, opts){
                     entries.forEach(entry => { 
-                            entry.target.classList.toggle('visible', entry.isIntersecting)
-                            const second = Math.floor(entry.target.getAttribute('data-timestamp') / 1000);
-                            const el = document.querySelector(`li[data-second="${second}"]`)
-                            if (el && entry.isIntersecting) {
-                                console.log(second);
-                                el.scrollIntoView();
-                            } 
+                        entry.target.classList.toggle('visible', entry.isIntersecting)
+                        const second = Math.floor(entry.target.getAttribute('data-timestamp') / 1000);
+                        const el = document.querySelector(`li[data-second="${second}"]`)
+                        if (el && entry.isIntersecting) {
+                            el.scrollIntoView();
                         }
-                    )
+                    })
                 }
 
                 // Use the observer to observe an element
-                observer.observe( document.querySelector('.screenshots') )
+                // observer.observe( document.querySelector('.screenshots') )
 
-                document.querySelectorAll('.screenshot').forEach((el) => {
-                    observer.observe(el);
+                setTimeout(() => {
+                    document.querySelectorAll('.screenshot').forEach((el) => {
+                        observer.observe(el);
+                    });
+                }, 2000)
+
+                // more observer
+                const moreObserver = new IntersectionObserver(onMoreIntersection, {
+                    root: null,   // default is the viewport
+                    threshold: 1 // percentage of target's visible area. Triggers "onIntersection"
                 });
+
+                let from = 500;
+                let to = 1000;
+
+                const logList = document.querySelector('.logs');
+
+                const loadItems = async () => {
+                    const response = await fetch('http://localhost:{{.Port}}/logs?' + new URLSearchParams({from, to}));
+                    const logs = await response.json();
+
+
+                    for (const logEntry of logs) {
+                        const li = document.createElement('li');
+                        if (logEntry.first) {
+                            li.setAttribute('data-second', logEntry.second);
+                        }
+                        li.innerText = logEntry.entry;
+                        logList.appendChild(li)
+                    }
+
+                    from = from + 500;
+                    to = to + 500;
+                };
+
+                function onMoreIntersection(entries, opts){
+                    if (entries[0].intersectionRatio <= 0) {
+                        return;
+                    }
+
+                    loadItems();
+                }
+
+                moreObserver.observe(document.querySelector('.more'));
             });
         </script>
     </body>
