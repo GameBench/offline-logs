@@ -90,6 +90,8 @@ func main() {
 	http.HandleFunc("/", getRoot)
 	http.HandleFunc("/logs", getLogs)
 
+	fmt.Printf("Server listening on 127.0.0.1:%s\n", *port)
+
 	err = http.ListenAndServe(fmt.Sprintf("127.0.0.1:%s", *port), nil)
 	log.Fatalln(err)
 }
@@ -225,7 +227,7 @@ func getLogLines(from int, to int) []string {
 	}
 
 	if len(files) == 0 {
-		panic("Log file not found")
+		log.Fatalln("Log file not found")
 	}
 
 	path := files[0]
@@ -290,32 +292,32 @@ func processLogLines(logLines []string) []*LogEntry {
 	r2 := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
 	r3 := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2} `)
 
-	for _, log := range logLines {
-		matches := r2.FindStringSubmatch(log)
+	for _, logLine := range logLines {
+		matches := r2.FindStringSubmatch(logLine)
 		if len(matches) == 0 {
 			continue
 		}
 
-		dateMatches := r3.MatchString(log)
+		dateMatches := r3.MatchString(logLine)
 
 		if dateMatches == true && (firstHours == nil || firstMinutes == nil) {
 			parsed, err := strconv.ParseUint(matches[1], 10, 64)
 			if err != nil {
-				panic(err)
+				log.Fatalln(err)
 			}
 
 			firstHours = &parsed
 
 			minutesParsed, err := strconv.ParseUint(matches[2], 10, 64)
 			if err != nil {
-				panic(err)
+				log.Fatalln(err)
 			}
 
 			firstMinutes = &minutesParsed
 
 			secondsParsed, err := strconv.ParseUint(matches[3], 10, 64)
 			if err != nil {
-				panic(err)
+				log.Fatalln(err)
 			}
 
 			firstSeconds = &secondsParsed
@@ -323,17 +325,17 @@ func processLogLines(logLines []string) []*LogEntry {
 
 		hours, err := strconv.ParseUint(matches[1], 10, 64)
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		minutes, err := strconv.ParseUint(matches[2], 10, 64)
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		seconds, err := strconv.ParseUint(matches[3], 10, 64)
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		if firstHours != nil {
@@ -358,7 +360,7 @@ func processLogLines(logLines []string) []*LogEntry {
 		}
 
 		logs = append(logs, &LogEntry{
-			Entry:  log,
+			Entry:  logLine,
 			Second: total,
 			First:  first,
 		})
@@ -371,13 +373,13 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 	// Parse the HTML template from a file.
 	tmpl, err := template.ParseFiles("template.html")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
 	// Open a new file for writing.
 	output, err := os.Create("output.html")
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 	defer output.Close()
 
@@ -400,7 +402,7 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 
 		timestamp, err := strconv.ParseUint(timestampStr, 10, 64)
 		if err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 
 		screenshots = append(screenshots, &Screenshot{
@@ -437,7 +439,7 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 
 	err = tmpl.Execute(output, data)
 	if err != nil {
-		panic(err)
+		log.Fatalln(err)
 	}
 
 	absPath, err := filepath.Abs("output.html")
@@ -455,7 +457,7 @@ func unzip(src, dest string) error {
 	}
 	defer func() {
 		if err := r.Close(); err != nil {
-			panic(err)
+			log.Fatalln(err)
 		}
 	}()
 
@@ -469,7 +471,7 @@ func unzip(src, dest string) error {
 		}
 		defer func() {
 			if err := rc.Close(); err != nil {
-				panic(err)
+				log.Fatalln(err)
 			}
 		}()
 
@@ -490,7 +492,7 @@ func unzip(src, dest string) error {
 			}
 			defer func() {
 				if err := f.Close(); err != nil {
-					panic(err)
+					log.Fatalln(err)
 				}
 			}()
 
