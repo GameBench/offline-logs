@@ -2,6 +2,14 @@
 
 ## Run binary with options
 
+[API Tokens documentation](https://docs.gamebench.net/docs/web-dashboard/api-tokens/)
+
+API username will be the email addressed used to log into the web dashboard.
+
+You can find your company ID by going to "My Company" and copying the ID from the URL.
+
+Session ID can be copied from the URL when accessing the session in the web dashboard.
+
 The below example is using the linux binary. Please change the command to use the relevant binary for your OS.
 
 ```
