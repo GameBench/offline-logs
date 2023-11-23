@@ -23,12 +23,12 @@ type Config struct {
 	webDashboardUrl string
 	apiUsername     string
 	apiToken        string
-	companyId       string
 	sessionId       string
 	orientation     string
 }
 
 var outDir string
+var companyId string
 
 func main() {
 	fmt.Printf("Version: %s\n", version)
@@ -36,7 +36,6 @@ func main() {
 	var webDashboardUrl = flag.String("web-dashboard-url", "", "")
 	var apiUsername = flag.String("api-username", "", "")
 	var apiToken = flag.String("api-token", "", "")
-	var companyId = flag.String("company-id", "", "")
 	var sessionId = flag.String("session-id", "", "")
 	var orientation = flag.String("orientation", "landscape", "")
 	var port = flag.String("port", "3333", "")
@@ -55,10 +54,6 @@ func main() {
 		log.Fatalln("API token must be specified")
 	}
 
-	if *companyId == "" {
-		log.Fatalln("Company ID must be specified")
-	}
-
 	if *sessionId == "" {
 		log.Fatalln("Session ID must be specified")
 	}
@@ -67,10 +62,11 @@ func main() {
 		webDashboardUrl: *webDashboardUrl,
 		apiUsername:     *apiUsername,
 		apiToken:        *apiToken,
-		companyId:       *companyId,
 		sessionId:       *sessionId,
 		orientation:     *orientation,
 	}
+
+	companyId = lookupUserCompany(config)
 
 	firstMetricTimestamp := lookupSession(config)
 	zipFile := downloadSession(config)
@@ -129,7 +125,7 @@ func lookupSession(config Config) uint64 {
 		Transport: &http.Transport{},
 	}
 
-	url := fmt.Sprintf("%s/v1/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, config.companyId)
+	url := fmt.Sprintf("%s/v1/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, companyId)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -155,12 +151,51 @@ func lookupSession(config Config) uint64 {
 	return sessionResponse.MinAbsTSCharts
 }
 
+type UserCompany struct {
+	Id string `json:"id"`
+}
+
+type UserResponse struct {
+	Company UserCompany `json:"company"`
+}
+
+func lookupUserCompany(config Config) string {
+	client := &http.Client{
+		Transport: &http.Transport{},
+	}
+
+	url := fmt.Sprintf("%s/v1/users/me", config.webDashboardUrl)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	req.SetBasicAuth(config.apiUsername, config.apiToken)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 404 {
+		log.Fatalln("Session not found")
+	}
+
+	userResponse := &UserResponse{}
+
+	json.NewDecoder(resp.Body).Decode(userResponse)
+
+	return userResponse.Company.Id
+}
+
 func downloadSession(config Config) string {
 	client := &http.Client{
 		Transport: &http.Transport{},
 	}
 
-	url := fmt.Sprintf("%s/v1/sessions/export/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, config.companyId)
+	url := fmt.Sprintf("%s/v1/sessions/export/sessions/%s?company=%s", config.webDashboardUrl, config.sessionId, companyId)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
