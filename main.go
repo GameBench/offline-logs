@@ -420,7 +420,7 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 
 	screenshots := make([]*Screenshot, 0)
 
-	r := regexp.MustCompile(`/([0-9]+)\.jpg$`)
+	r := regexp.MustCompile(`(?:/|\\)([0-9]+)\.jpg$`)
 
 	var screenshotWidth *int
 	var screenshotHeight *int
