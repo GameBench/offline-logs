@@ -1,21 +1,28 @@
 package main
 
-import "archive/zip"
-import "bufio"
-import "encoding/json"
-import "flag"
-import "fmt"
-import "html/template"
-import "image"
-import _ "image/jpeg"
-import "io"
-import "log"
-import "net/http"
-import "os"
-import "path/filepath"
-import "regexp"
-import "strconv"
-import "strings"
+import (
+	"archive/zip"
+	"bufio"
+	"embed"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"html/template"
+	"image"
+
+	_ "image/jpeg"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+//go:embed template.html
+var templateFS embed.FS
 
 var version string
 
@@ -321,21 +328,43 @@ var firstSeconds *uint64
 var prev uint64
 var first bool
 
+func matchDateTime(logLine string) []string {
+	fullDateTimeRegex := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
+	matches := fullDateTimeRegex.FindStringSubmatch(logLine)
+	if len(matches) > 0 {
+		return matches
+	}
+
+	partialDateTimeRegex := regexp.MustCompile(`^(?:[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
+	matches = partialDateTimeRegex.FindStringSubmatch(logLine)
+	return matches
+}
+
+func matchDate(logLine string) bool {
+	fullDateRegex := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2} `)
+	dateMatches := fullDateRegex.MatchString(logLine)
+
+	if dateMatches {
+		return true
+	}
+
+	partialDateRegex := regexp.MustCompile(`^[0-9]{2}-[0-9]{2} `)
+	dateMatches = partialDateRegex.MatchString(logLine)
+	return dateMatches
+}
+
 func processLogLines(logLines []string) []*LogEntry {
 	logs := make([]*LogEntry, 0)
 
-	r2 := regexp.MustCompile(`^(?:[0-9]{4}-[0-9]{2}-[0-9]{2} )?([0-9]{2}):([0-9]{2}):([0-9]{2})\.`)
-	r3 := regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2} `)
-
 	for _, logLine := range logLines {
-		matches := r2.FindStringSubmatch(logLine)
+		matches := matchDateTime(logLine)
 		if len(matches) == 0 {
 			continue
 		}
 
-		dateMatches := r3.MatchString(logLine)
+		dateMatches := matchDate(logLine)
 
-		if dateMatches == true && (firstHours == nil || firstMinutes == nil) {
+		if dateMatches && (firstHours == nil || firstMinutes == nil) {
 			parsed, err := strconv.ParseUint(matches[1], 10, 64)
 			if err != nil {
 				log.Fatalln(err)
@@ -405,8 +434,7 @@ func processLogLines(logLines []string) []*LogEntry {
 }
 
 func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLines []string, orientation string, port string) string {
-	// Parse the HTML template from a file.
-	tmpl, err := template.ParseFiles("template.html")
+	tmpl, err := template.ParseFS(templateFS, "template.html")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -440,8 +468,10 @@ func generateHtml(firstMetricTimestamp uint64, screenshotPaths []string, logLine
 			log.Fatalln(err)
 		}
 
+		correctedScreeenshotPath := strings.ReplaceAll(screenshot, "\\", "/")
+
 		screenshots = append(screenshots, &Screenshot{
-			Path:            screenshot,
+			Path:            correctedScreeenshotPath,
 			Timestamp:       timestamp - firstMetricTimestamp,
 			PrettyTimestamp: (timestamp - firstMetricTimestamp),
 		})
